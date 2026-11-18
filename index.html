@@ -38,49 +38,106 @@
  <form class="c" id="lf" autocomplete="on">
   <div class="lg"><svg width="30" height="30" viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="8" fill="currentColor" opacity=".12"/><path d="M16 9v14M9 16h14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Plantão Ped</div>
   <p>Ferramenta de apoio ao plantão de pediatria. Acesso restrito.</p>
-  <label for="u">Usuário</label><input id="u" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+  <div id="lmain">
+  <label for="u" id="ulab">Usuário</label><input id="u" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
   <label for="pw">Senha</label><input id="pw" type="password" autocomplete="current-password" required>
   <label class="rm"><input type="checkbox" id="rm"> Manter conectado neste aparelho (não use em PC do hospital)</label>
   <button id="bt" type="submit">Entrar</button>
+  <a href="#" id="forgot" style="display:none;font-size:13px;color:var(--a);margin-top:12px;display:none">Esqueci minha senha</a>
+  </div>
+  <div id="lsetup" style="display:none">
+   <label>Configuração inicial (só uma vez)</label>
+   <p style="margin:4px 0 8px">Abra o arquivo <b>chave-mestra.txt</b> da sua pasta, copie todo o conteúdo e cole abaixo.</p>
+   <input id="mk" type="text" placeholder="cole a chave aqui" autocomplete="off">
+   <button id="mkbt" type="button">Ativar</button>
+  </div>
   <div class="er" id="er"></div>
-  <div class="ft">O conteúdo é criptografado e só abre com usuário e senha válidos.</div>
+  <div class="ft">O conteúdo é criptografado e só abre com acesso válido.</div>
  </form>
 </div>
 <div id="app"></div>
+<script src="config.js"></script>
 <script>
 (function(){
+const CFG=window.PP_CONFIG||{},FB=CFG.firebase&&CFG.firebase.apiKey&&CFG.firebase.projectId?CFG.firebase:null;
+const ADMIN=(CFG.adminEmail||'').trim().toLowerCase();
 const b64=u=>{let s='';new Uint8Array(u).forEach(c=>s+=String.fromCharCode(c));return btoa(s)};
-const ub64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const ub64=s=>Uint8Array.from(atob(s.trim()),c=>c.charCodeAt(0));
+const $=id=>document.getElementById(id);
 async function getJSON(f){const r=await fetch(f,{cache:'no-cache'});if(!r.ok)throw new Error('net');return r.json()}
-async function unlock(user,pw){
+/* ---- Firebase via REST (sem bibliotecas) ---- */
+const IT='https://identitytoolkit.googleapis.com/v1/accounts:';
+const API={
+ async post(u,body,form){let r;try{r=await fetch(u,{method:'POST',headers:{'Content-Type':form?'application/x-www-form-urlencoded':'application/json'},body:form?body:JSON.stringify(body)})}catch(e){throw new Error('net')}const j=await r.json();if(!r.ok)throw new Error((j.error&&j.error.message)||'erro');return j},
+ signIn(e,p){return this.post(IT+'signInWithPassword?key='+FB.apiKey,{email:e,password:p,returnSecureToken:true})},
+ signUp(e,p){return this.post(IT+'signUp?key='+FB.apiKey,{email:e,password:p,returnSecureToken:true})},
+ updatePw(t,p){return this.post(IT+'update?key='+FB.apiKey,{idToken:t,password:p,returnSecureToken:true})},
+ sendReset(e){return this.post(IT+'sendOobCode?key='+FB.apiKey,{requestType:'PASSWORD_RESET',email:e})},
+ async refresh(rt){const j=await this.post('https://securetoken.googleapis.com/v1/token?key='+FB.apiKey,'grant_type=refresh_token&refresh_token='+encodeURIComponent(rt),true);return{idToken:j.id_token,refreshToken:j.refresh_token,localId:j.user_id,expiresIn:+j.expires_in}},
+ async fs(method,path,tok,body,mask){let u='https://firestore.googleapis.com/v1/projects/'+FB.projectId+'/databases/(default)/documents/'+path;if(mask)u+=(u.includes('?')?'&':'?')+mask.map(m=>'updateMask.fieldPaths='+m).join('&');
+  let r;try{r=await fetch(u,{method,headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined})}catch(e){throw new Error('net')}
+  if(r.status===404)return null;const j=await r.json();if(!r.ok){const e=new Error((j.error&&j.error.status)||'erro');e.status=r.status;throw e}return j}
+};
+const toFS=o=>({fields:Object.fromEntries(Object.entries(o).map(([k,v])=>[k,typeof v==='boolean'?{booleanValue:v}:{stringValue:String(v)}]))});
+const fromFS=d=>Object.fromEntries(Object.entries((d&&d.fields)||{}).map(([k,v])=>[k,'booleanValue' in v?v.booleanValue:v.stringValue]));
+let SESS=null,TOK=null,TOKEXP=0,STORE=sessionStorage;
+function saveSess(){STORE.setItem('pp_s',JSON.stringify(SESS))}
+async function token(){if(TOK&&Date.now()<TOKEXP)return TOK;const r=await API.refresh(SESS.rt);TOK=r.idToken;TOKEXP=Date.now()+(r.expiresIn-120)*1000;SESS.rt=r.refreshToken;saveSess();return TOK}
+async function readKey(tok){const d=await API.fs('GET','cfg/key',tok);return d?ub64(fromFS(d).k):null}
+/* ---- local (users.json) ---- */
+async function unlockLocal(user,pw){
   const db=await getJSON('users.json');const e=db.users[user];if(!e)throw new Error('cred');
   const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
   const kek=await crypto.subtle.deriveKey({name:'PBKDF2',salt:ub64(e.salt),iterations:e.iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
   try{return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:ub64(e.iv)},kek,ub64(e.wk)))}catch(x){throw new Error('cred')}
 }
-async function boot(raw,user){
-  const key=await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);
-  const enc=await getJSON('app.enc');
-  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:ub64(enc.iv)},key,ub64(enc.ct));
-  const P=JSON.parse(new TextDecoder().decode(pt));
-  window.__PPKEY=key;window.__PPRAW=raw;window.__PPUSER=user;
-  document.getElementById('login').style.display='none';
+async function decApp(raw){const key=await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);const enc=await getJSON('app.enc');
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:ub64(enc.iv)},key,ub64(enc.ct));return{key,P:JSON.parse(new TextDecoder().decode(pt))}}
+async function boot(raw,auth){
+  const {key,P}=await decApp(raw);
+  window.__PPKEY=key;window.__PPRAW=raw;window.__PPAUTH=auth;
+  $('login').style.display='none';
   const st=document.createElement('style');st.textContent=P.css;document.head.appendChild(st);
-  document.getElementById('app').innerHTML=P.html;
+  $('app').innerHTML=P.html;
   const sc=document.createElement('script');sc.textContent=P.js;document.body.appendChild(sc);
 }
-window.ppLogout=function(){localStorage.removeItem('pp_k');localStorage.removeItem('pp_u');sessionStorage.removeItem('pp_k');sessionStorage.removeItem('pp_u');location.hash='';location.reload()};
-function showLogin(msg){const l=document.getElementById('login');l.style.display='';document.getElementById('er').textContent=msg||'';document.getElementById('u').focus()}
-const saved=localStorage.getItem('pp_k')||sessionStorage.getItem('pp_k');
-const savedU=localStorage.getItem('pp_u')||sessionStorage.getItem('pp_u');
-if(saved){boot(ub64(saved),savedU).catch(()=>{localStorage.removeItem('pp_k');sessionStorage.removeItem('pp_k');showLogin('Sessão expirada. Entre novamente.')})}else showLogin();
-document.getElementById('lf').addEventListener('submit',async ev=>{
-  ev.preventDefault();const bt=document.getElementById('bt'),er=document.getElementById('er');
-  const u=document.getElementById('u').value.trim().toLowerCase(),pw=document.getElementById('pw').value;
+function fbAuth(){return{mode:'fb',email:SESS.email,uid:SESS.uid,isAdmin:!!ADMIN&&SESS.email===ADMIN,token,api:API,toFS,fromFS,
+  async changePw(cur,nw){const r=await API.signIn(SESS.email,cur);const u=await API.updatePw(r.idToken,nw);SESS.rt=u.refreshToken;TOK=u.idToken;TOKEXP=Date.now()+(+u.expiresIn-120)*1000;saveSess()}}}
+window.ppLogout=function(){['pp_s','pp_k','pp_u'].forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});location.hash='';location.reload()};
+function showLogin(msg){$('login').style.display='';$('er').textContent=msg||'';$('u').focus()}
+const MSG={cred:'Usuário ou senha incorretos.',INVALID_LOGIN_CREDENTIALS:'E-mail ou senha incorretos.',INVALID_PASSWORD:'E-mail ou senha incorretos.',EMAIL_NOT_FOUND:'E-mail ou senha incorretos.',INVALID_EMAIL:'E-mail inválido.',USER_DISABLED:'Acesso desativado.',inativo:'Seu acesso está bloqueado. Fale com a administradora.',semchave:'O app ainda não foi ativado pela administradora.',TOO_MANY_ATTEMPTS_TRY_LATER:'Muitas tentativas. Aguarde alguns minutos.',net:'Sem conexão. Tente novamente com internet.',chave:'Chave inválida — confira o conteúdo de chave-mestra.txt.'};
+const msg=e=>MSG[e.message]||('Erro: '+e.message);
+if(FB){$('ulab').textContent='E-mail';$('u').type='email';$('forgot').style.display='inline-block';
+  $('forgot').onclick=async ev=>{ev.preventDefault();const e=$('u').value.trim().toLowerCase();if(!e){$('er').textContent='Digite seu e-mail acima e clique de novo.';return}try{await API.sendReset(e);$('er').style.color='inherit';$('er').textContent='Enviamos um e-mail para redefinir a senha (veja também o spam).'}catch(x){$('er').textContent=msg(x)}}}
+/* ---- sessão salva ---- */
+const saved=localStorage.getItem('pp_s')||sessionStorage.getItem('pp_s');
+if(saved){STORE=localStorage.getItem('pp_s')?localStorage:sessionStorage;SESS=JSON.parse(saved);
+  if(SESS.mode==='fb'&&!FB){window.ppLogout()}
+  else boot(ub64(SESS.k),SESS.mode==='fb'?fbAuth():{mode:'local',user:SESS.user}).then(()=>{
+    if(SESS.mode==='fb')token().then(readKey).then(k=>{if(!k)throw new Error('inativo')}).catch(e=>{if(e.message!=='net'){alert('Seu acesso foi encerrado. Entre novamente.');window.ppLogout()}});
+  }).catch(()=>{window.ppLogout()});
+}else showLogin();
+/* ---- login ---- */
+$('lf').addEventListener('submit',async ev=>{
+  ev.preventDefault();const bt=$('bt'),er=$('er');er.style.color='';
+  const u=$('u').value.trim().toLowerCase(),pw=$('pw').value;STORE=$('rm').checked?localStorage:sessionStorage;
   bt.disabled=true;bt.textContent='Verificando…';er.textContent='';
-  try{const raw=await unlock(u,pw);const st=document.getElementById('rm').checked?localStorage:sessionStorage;st.setItem('pp_k',b64(raw));st.setItem('pp_u',u);await boot(raw,u)}
-  catch(x){er.textContent=x.message==='cred'?'Usuário ou senha incorretos.':'Sem conexão e sem cópia offline. Tente novamente com internet.';bt.disabled=false;bt.textContent='Entrar'}
+  try{
+    if(FB){const r=await API.signIn(u,pw);SESS={mode:'fb',rt:r.refreshToken,uid:r.localId,email:(r.email||u).toLowerCase()};TOK=r.idToken;TOKEXP=Date.now()+(+r.expiresIn-120)*1000;
+      let raw;try{raw=await readKey(TOK)}catch(x){if(x.status===403)throw new Error('inativo');throw x}
+      if(!raw){if(SESS.email===ADMIN){$('lmain').style.display='none';$('lsetup').style.display='';bt.disabled=false;bt.textContent='Entrar';return}throw new Error('semchave')}
+      SESS.k=b64(raw);saveSess();await boot(raw,fbAuth());
+    }else{const raw=await unlockLocal(u,pw);SESS={mode:'local',user:u,k:b64(raw)};saveSess();await boot(raw,{mode:'local',user:u})}
+  }catch(x){er.textContent=msg(x);bt.disabled=false;bt.textContent='Entrar'}
 });
+/* ---- ativação inicial (administradora) ---- */
+$('mkbt').onclick=async()=>{const er=$('er');er.textContent='';
+  try{let raw;try{raw=ub64($('mk').value);await decApp(raw)}catch(x){throw new Error('chave')}
+    const t=await token().catch(()=>TOK);
+    await API.fs('PATCH','users/'+SESS.uid,TOK,toFS({email:SESS.email,nome:'Administradora',ativo:true,criado:new Date().toISOString()}));
+    await API.fs('PATCH','cfg/key',TOK,toFS({k:b64(raw)}));
+    SESS.k=b64(raw);saveSess();await boot(raw,fbAuth());
+  }catch(x){er.textContent=x.status===403?'Permissão negada: confira as regras do Firestore e o e-mail de administradora.':msg(x)}};
 if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
