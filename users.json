@@ -1,0 +1,10 @@
+{
+ "users": {
+  "jacke": {
+   "salt": "kqqt9QdKCTgJM9z6B9uamg==",
+   "iter": 310000,
+   "iv": "aG4usvVXLSs6aDu3",
+   "wk": "BKWEB+YL8TMIFgxfevuxOEbjwupRk+SkAPayZazycO4HUqLGZ7EB1mtvPWuFipRP"
+  }
+ }
+}
