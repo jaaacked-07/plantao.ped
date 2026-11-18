@@ -60,7 +60,7 @@
 <script>
 (function(){
 const CFG=window.PP_CONFIG||{},FB=CFG.firebase&&CFG.firebase.apiKey&&CFG.firebase.projectId?CFG.firebase:null;
-const ADMIN=(CFG.adminEmail||'').trim().toLowerCase();
+const DOM='@plantaoped.app';const toEmail=u=>(u.includes('@')?u:u+DOM).toLowerCase();const ADMIN=CFG.adminUser?toEmail(CFG.adminUser.trim()):'';
 const b64=u=>{let s='';new Uint8Array(u).forEach(c=>s+=String.fromCharCode(c));return btoa(s)};
 const ub64=s=>Uint8Array.from(atob(s.trim()),c=>c.charCodeAt(0));
 const $=id=>document.getElementById(id);
@@ -101,13 +101,13 @@ async function boot(raw,auth){
   $('app').innerHTML=P.html;
   const sc=document.createElement('script');sc.textContent=P.js;document.body.appendChild(sc);
 }
-function fbAuth(){return{mode:'fb',email:SESS.email,uid:SESS.uid,isAdmin:!!ADMIN&&SESS.email===ADMIN,token,api:API,toFS,fromFS,
+function fbAuth(){return{mode:'fb',email:SESS.email,user:SESS.email.replace(DOM,''),toEmail,uid:SESS.uid,isAdmin:!!ADMIN&&SESS.email===ADMIN,token,api:API,toFS,fromFS,
   async changePw(cur,nw){const r=await API.signIn(SESS.email,cur);const u=await API.updatePw(r.idToken,nw);SESS.rt=u.refreshToken;TOK=u.idToken;TOKEXP=Date.now()+(+u.expiresIn-120)*1000;saveSess()}}}
 window.ppLogout=function(){['pp_s','pp_k','pp_u'].forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});location.hash='';location.reload()};
 function showLogin(msg){$('login').style.display='';$('er').textContent=msg||'';$('u').focus()}
-const MSG={cred:'Usuário ou senha incorretos.',INVALID_LOGIN_CREDENTIALS:'E-mail ou senha incorretos.',INVALID_PASSWORD:'E-mail ou senha incorretos.',EMAIL_NOT_FOUND:'E-mail ou senha incorretos.',INVALID_EMAIL:'E-mail inválido.',USER_DISABLED:'Acesso desativado.',inativo:'Seu acesso está bloqueado. Fale com a administradora.',semchave:'O app ainda não foi ativado pela administradora.',TOO_MANY_ATTEMPTS_TRY_LATER:'Muitas tentativas. Aguarde alguns minutos.',net:'Sem conexão. Tente novamente com internet.',chave:'Chave inválida — confira o conteúdo de chave-mestra.txt.'};
+const MSG={cred:'Usuário ou senha incorretos.',INVALID_LOGIN_CREDENTIALS:'Usuário ou senha incorretos.',INVALID_PASSWORD:'Usuário ou senha incorretos.',EMAIL_NOT_FOUND:'Usuário ou senha incorretos.',INVALID_EMAIL:'Usuário inválido (use só letras, números, ponto ou traço).',USER_DISABLED:'Acesso desativado.',inativo:'Seu acesso está bloqueado. Fale com a administradora.',semchave:'O app ainda não foi ativado pela administradora.',TOO_MANY_ATTEMPTS_TRY_LATER:'Muitas tentativas. Aguarde alguns minutos.',net:'Sem conexão. Tente novamente com internet.',chave:'Chave inválida — confira o conteúdo de chave-mestra.txt.'};
 const msg=e=>MSG[e.message]||('Erro: '+e.message);
-if(FB){$('ulab').textContent='E-mail';$('u').type='email';$('forgot').style.display='inline-block';
+if(false){
   $('forgot').onclick=async ev=>{ev.preventDefault();const e=$('u').value.trim().toLowerCase();if(!e){$('er').textContent='Digite seu e-mail acima e clique de novo.';return}try{await API.sendReset(e);$('er').style.color='inherit';$('er').textContent='Enviamos um e-mail para redefinir a senha (veja também o spam).'}catch(x){$('er').textContent=msg(x)}}}
 /* ---- sessão salva ---- */
 const saved=localStorage.getItem('pp_s')||sessionStorage.getItem('pp_s');
@@ -123,7 +123,7 @@ $('lf').addEventListener('submit',async ev=>{
   const u=$('u').value.trim().toLowerCase(),pw=$('pw').value;STORE=$('rm').checked?localStorage:sessionStorage;
   bt.disabled=true;bt.textContent='Verificando…';er.textContent='';
   try{
-    if(FB){const r=await API.signIn(u,pw);SESS={mode:'fb',rt:r.refreshToken,uid:r.localId,email:(r.email||u).toLowerCase()};TOK=r.idToken;TOKEXP=Date.now()+(+r.expiresIn-120)*1000;
+    if(FB){const r=await API.signIn(toEmail(u),pw);SESS={mode:'fb',rt:r.refreshToken,uid:r.localId,email:(r.email||toEmail(u)).toLowerCase()};TOK=r.idToken;TOKEXP=Date.now()+(+r.expiresIn-120)*1000;
       let raw;try{raw=await readKey(TOK)}catch(x){if(x.status===403)throw new Error('inativo');throw x}
       if(!raw){if(SESS.email===ADMIN){$('lmain').style.display='none';$('lsetup').style.display='';bt.disabled=false;bt.textContent='Entrar';return}throw new Error('semchave')}
       SESS.k=b64(raw);saveSess();await boot(raw,fbAuth());

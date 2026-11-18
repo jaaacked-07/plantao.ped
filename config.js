@@ -3,8 +3,8 @@
 // Com os campos vazios, o app usa o login local (users.json).
 window.PP_CONFIG = {
   firebase: {
-    apiKey: "",      // ex.: "AIzaSyB...."
-    projectId: ""    // ex.: "plantao-ped-12345"
+    apiKey: "AIzaSyDmMrY8D7XapTAmG9J5XU5sFYb_ciF0rB0",      // ex.: "AIzaSyB...."
+    projectId: "plantao-ped"    // ex.: "plantao-ped-12345"
   },
-  adminEmail: ""     // o SEU e-mail (o mesmo usado para entrar no app)
+  adminUser: "jaaacked"  // o SEU usuário de login
 };
