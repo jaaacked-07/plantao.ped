@@ -81,7 +81,7 @@ const API={
 const toFS=o=>({fields:Object.fromEntries(Object.entries(o).map(([k,v])=>[k,typeof v==='boolean'?{booleanValue:v}:{stringValue:String(v)}]))});
 const fromFS=d=>Object.fromEntries(Object.entries((d&&d.fields)||{}).map(([k,v])=>[k,'booleanValue' in v?v.booleanValue:v.stringValue]));
 let SESS=null,TOK=null,TOKEXP=0,STORE=sessionStorage;
-function saveSess(){STORE.setItem('pp_s',JSON.stringify(SESS))}
+function saveSess(){const v=JSON.stringify(SESS);try{STORE.setItem('ped_s',v)}catch(e){try{sessionStorage.setItem('ped_s',v)}catch(e2){window.__memSess=v}}}
 async function token(){if(TOK&&Date.now()<TOKEXP)return TOK;const r=await API.refresh(SESS.rt);TOK=r.idToken;TOKEXP=Date.now()+(r.expiresIn-120)*1000;SESS.rt=r.refreshToken;saveSess();return TOK}
 async function readKey(tok){const d=await API.fs('GET','cfg/key',tok);return d?ub64(fromFS(d).k):null}
 /* ---- local (users.json) ---- */
@@ -103,15 +103,15 @@ async function boot(raw,auth){
 }
 function fbAuth(){return{mode:'fb',email:SESS.email,user:SESS.email.replace(DOM,''),toEmail,uid:SESS.uid,isAdmin:!!ADMIN&&SESS.email===ADMIN,token,api:API,toFS,fromFS,
   async changePw(cur,nw){const r=await API.signIn(SESS.email,cur);const u=await API.updatePw(r.idToken,nw);SESS.rt=u.refreshToken;TOK=u.idToken;TOKEXP=Date.now()+(+u.expiresIn-120)*1000;saveSess()}}}
-window.ppLogout=function(){['pp_s','pp_k','pp_u'].forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});location.hash='';location.reload()};
+window.ppLogout=function(){['ped_s','ped_k','ped_u'].forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});location.hash='';location.reload()};
 function showLogin(msg){$('login').style.display='';$('er').textContent=msg||'';$('u').focus()}
 const MSG={cred:'Usuário ou senha incorretos.',INVALID_LOGIN_CREDENTIALS:'Usuário ou senha incorretos.',INVALID_PASSWORD:'Usuário ou senha incorretos.',EMAIL_NOT_FOUND:'Usuário ou senha incorretos.',INVALID_EMAIL:'Usuário inválido (use só letras, números, ponto ou traço).',USER_DISABLED:'Acesso desativado.',inativo:'Seu acesso está bloqueado. Fale com a administradora.',semchave:'O app ainda não foi ativado pela administradora.',TOO_MANY_ATTEMPTS_TRY_LATER:'Muitas tentativas. Aguarde alguns minutos.',net:'Sem conexão. Tente novamente com internet.',chave:'Chave inválida — confira o conteúdo de chave-mestra.txt.'};
 const msg=e=>MSG[e.message]||('Erro: '+e.message);
 if(false){
   $('forgot').onclick=async ev=>{ev.preventDefault();const e=$('u').value.trim().toLowerCase();if(!e){$('er').textContent='Digite seu e-mail acima e clique de novo.';return}try{await API.sendReset(e);$('er').style.color='inherit';$('er').textContent='Enviamos um e-mail para redefinir a senha (veja também o spam).'}catch(x){$('er').textContent=msg(x)}}}
 /* ---- sessão salva ---- */
-const saved=localStorage.getItem('pp_s')||sessionStorage.getItem('pp_s');
-if(saved){STORE=localStorage.getItem('pp_s')?localStorage:sessionStorage;SESS=JSON.parse(saved);
+const saved=localStorage.getItem('ped_s')||sessionStorage.getItem('ped_s');
+if(saved){STORE=localStorage.getItem('ped_s')?localStorage:sessionStorage;SESS=JSON.parse(saved);
   if(SESS.mode==='fb'&&!FB){window.ppLogout()}
   else boot(ub64(SESS.k),SESS.mode==='fb'?fbAuth():{mode:'local',user:SESS.user}).then(()=>{
     if(SESS.mode==='fb')token().then(readKey).then(k=>{if(!k)throw new Error('inativo')}).catch(e=>{if(e.message!=='net'){alert('Seu acesso foi encerrado. Entre novamente.');window.ppLogout()}});
