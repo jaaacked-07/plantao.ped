@@ -41,7 +41,7 @@
   <div id="lmain">
   <label for="u" id="ulab">Usuário</label><input id="u" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
   <label for="pw">Senha</label><input id="pw" type="password" autocomplete="current-password" required>
-  <label class="rm"><input type="checkbox" id="rm"> Manter conectado neste aparelho (não use em PC do hospital)</label>
+  <label class="rm"><input type="checkbox" id="rm" checked> Manter conectado neste aparelho (não use em PC do hospital)</label>
   <button id="bt" type="submit">Entrar</button>
   <a href="#" id="forgot" style="display:none;font-size:13px;color:var(--a);margin-top:12px;display:none">Esqueci minha senha</a>
   </div>
@@ -116,18 +116,18 @@ if(saved){STORE=localStorage.getItem('ped_s')?localStorage:sessionStorage;SESS=J
   else boot(ub64(SESS.k),SESS.mode==='fb'?fbAuth():{mode:'local',user:SESS.user}).then(()=>{
     if(SESS.mode==='fb')token().then(readKey).then(k=>{if(!k)throw new Error('inativo')}).catch(e=>{if(e.message!=='net'){alert('Seu acesso foi encerrado. Entre novamente.');window.ppLogout()}});
   }).catch(()=>{window.ppLogout()});
-}else showLogin();
+}else{showLogin();try{if(localStorage.getItem('ped_rm')==='0')$('rm').checked=false;const lu=localStorage.getItem('ped_lu');if(lu)$('u').value=lu}catch(e){}}
 /* ---- login ---- */
 $('lf').addEventListener('submit',async ev=>{
   ev.preventDefault();const bt=$('bt'),er=$('er');er.style.color='';
-  const u=$('u').value.trim().toLowerCase(),pw=$('pw').value;STORE=$('rm').checked?localStorage:sessionStorage;
+  const u=$('u').value.trim().toLowerCase(),pw=$('pw').value;STORE=$('rm').checked?localStorage:sessionStorage;try{localStorage.setItem('ped_rm',$('rm').checked?'1':'0');localStorage.setItem('ped_lu',u)}catch(e){}const saveCred=()=>{try{if(window.PasswordCredential&&navigator.credentials)navigator.credentials.store(new PasswordCredential({id:u,password:pw,name:u})).catch(()=>{})}catch(e){}};
   bt.disabled=true;bt.textContent='Verificando…';er.textContent='';
   try{
     if(FB){const r=await API.signIn(toEmail(u),pw);SESS={mode:'fb',rt:r.refreshToken,uid:r.localId,email:(r.email||toEmail(u)).toLowerCase()};TOK=r.idToken;TOKEXP=Date.now()+(+r.expiresIn-120)*1000;
       let raw;try{raw=await readKey(TOK)}catch(x){if(x.status===403)throw new Error('inativo');throw x}
       if(!raw){if(SESS.email===ADMIN){$('lmain').style.display='none';$('lsetup').style.display='';bt.disabled=false;bt.textContent='Entrar';return}throw new Error('semchave')}
-      SESS.k=b64(raw);saveSess();await boot(raw,fbAuth());
-    }else{const raw=await unlockLocal(u,pw);SESS={mode:'local',user:u,k:b64(raw)};saveSess();await boot(raw,{mode:'local',user:u})}
+      SESS.k=b64(raw);saveSess();saveCred();await boot(raw,fbAuth());
+    }else{const raw=await unlockLocal(u,pw);SESS={mode:'local',user:u,k:b64(raw)};saveSess();saveCred();await boot(raw,{mode:'local',user:u})}
   }catch(x){er.textContent=msg(x);bt.disabled=false;bt.textContent='Entrar'}
 });
 /* ---- ativação inicial (administradora) ---- */
