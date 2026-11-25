@@ -49,13 +49,10 @@
   <button type="button" id="sgo" class="sec" style="display:none">Criar conta nova</button>
   </div>
   <div id="lsign" style="display:none">
-   <label for="sn">Seu nome</label><input id="sn" type="text" autocomplete="name">
    <label for="su">Usuário (sem espaço)</label><input id="su" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
    <label for="sp">Senha (mín. 6)</label><input id="sp" type="password" autocomplete="new-password">
-   <label for="sc">Código de convite</label><input id="sc" type="text" autocapitalize="none" spellcheck="false" placeholder="se tiver — libera na hora">
    <button type="button" id="sbt">Criar conta e entrar</button>
    <button type="button" id="sback" class="sec">← Voltar ao login</button>
-   <p class="hint">Sem código, a conta fica aguardando a administradora liberar.</p>
   </div>
   <div id="lsetup" style="display:none">
    <label>Configuração inicial (só uma vez)</label>
@@ -130,20 +127,15 @@ if(saved){STORE=localStorage.getItem('ped_s')?localStorage:sessionStorage;SESS=J
   }).catch(()=>{window.ppLogout()});
 }else{showLogin();try{if(localStorage.getItem('ped_rm')==='0')$('rm').checked=false;const lu=localStorage.getItem('ped_lu');if(lu)$('u').value=lu}catch(e){}}
 /* ---- login ---- */
-const setMode=s=>{$('lmain').style.display=s?'none':'';$('lsign').style.display=s?'':'none';$('er').textContent='';$('er').style.color='';(s?$('sn'):$('u')).focus()};
-if(FB){$('sgo').style.display='';$('sgo').onclick=()=>setMode(1);$('sback').onclick=()=>setMode(0);$('sbt').onclick=()=>doSign()}
+const setMode=s=>{$('lmain').style.display=s?'none':'';$('lsign').style.display=s?'':'none';$('er').textContent='';$('er').style.color='';(s?$('su'):$('u')).focus()};
+if(FB){$('sgo').style.display='';$('sgo').onclick=()=>setMode(1);$('sback').onclick=()=>setMode(0);$('sbt').onclick=()=>doSign();['su','sp'].forEach(i=>$(i).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();doSign()}}))}
 async function doSign(){const bt=$('sbt'),er=$('er');er.style.color='';er.textContent='';
-  const n=$('sn').value.trim(),u=$('su').value.trim().toLowerCase(),pw=$('sp').value,code=$('sc').value.trim();
-  if(!n){er.textContent='Digite seu nome.';return}
+  const u=$('su').value.trim().toLowerCase(),pw=$('sp').value,n=u;
   if(!/^[a-z0-9._-]{3,30}$/.test(u)){er.textContent='Usuário: mínimo 3 letras/números, sem espaço ou acento.';return}
   if(pw.length<6){er.textContent='A senha precisa de pelo menos 6 caracteres.';return}
   bt.disabled=true;bt.textContent='Criando…';
   try{const e=toEmail(u),r=await API.signUp(e,pw),uid=r.localId,tk=r.idToken,base={email:e,nome:n,criado:new Date().toISOString()};
-    let ok=false;
-    if(code){try{await API.fs('PATCH','users/'+uid,tk,toFS(Object.assign({},base,{ativo:true,codigo:code})));ok=true}catch(x){if(x.status!==403)throw x}}
-    if(!ok){try{await API.fs('PATCH','users/'+uid,tk,toFS(Object.assign({},base,{ativo:false,pendente:true})))}catch(x){if(x.status!==403)throw x}
-      bt.disabled=false;bt.textContent='Criar conta e entrar';setMode(0);$('u').value=u;$('pw').value='';er.style.color='inherit';
-      er.textContent=(code?'Código de convite inválido. ':'')+'Conta criada ✓ Aguarde a liberação da administradora — depois é só entrar com seu usuário e senha.';return}
+    try{await API.fs('PATCH','users/'+uid,tk,toFS(Object.assign({},base,{ativo:true})))}catch(x){if(x.status===403){bt.disabled=false;bt.textContent='Criar conta e entrar';setMode(0);$('u').value=u;er.textContent='Conta criada, mas o acesso precisa ser liberado pela administradora.';return}throw x}
     STORE=localStorage;try{localStorage.setItem('ped_lu',u)}catch(x){}
     SESS={mode:'fb',rt:r.refreshToken,uid,email:e};TOK=tk;TOKEXP=Date.now()+(+r.expiresIn-120)*1000;
     const raw=await readKey(TOK);if(!raw)throw new Error('semchave');SESS.k=b64(raw);saveSess();
