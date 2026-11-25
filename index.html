@@ -29,6 +29,8 @@
 #login .rm{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--m);margin:14px 0 0;text-transform:none;letter-spacing:0;font-weight:500}
 #login button{width:100%;margin-top:20px;padding:12px;border:0;border-radius:10px;background:var(--a);color:#fff;font:inherit;font-weight:600;font-size:15px;cursor:pointer}
 #login button:disabled{opacity:.6}
+#login button.sec{background:transparent;color:var(--a);border:1px solid var(--l);margin-top:10px}
+#login .hint{font-size:12.5px;margin:12px 0 0;text-align:center}
 #login .er{color:var(--d);font-size:13px;margin-top:12px;min-height:18px}
 #login .ft{font-size:11.5px;color:var(--m);margin-top:18px;line-height:1.5}
 </style>
@@ -44,6 +46,16 @@
   <label class="rm"><input type="checkbox" id="rm" checked> Manter conectado neste aparelho (não use em PC do hospital)</label>
   <button id="bt" type="submit">Entrar</button>
   <a href="#" id="forgot" style="display:none;font-size:13px;color:var(--a);margin-top:12px;display:none">Esqueci minha senha</a>
+  <button type="button" id="sgo" class="sec" style="display:none">Criar conta nova</button>
+  </div>
+  <div id="lsign" style="display:none">
+   <label for="sn">Seu nome</label><input id="sn" type="text" autocomplete="name">
+   <label for="su">Usuário (sem espaço)</label><input id="su" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
+   <label for="sp">Senha (mín. 6)</label><input id="sp" type="password" autocomplete="new-password">
+   <label for="sc">Código de convite</label><input id="sc" type="text" autocapitalize="none" spellcheck="false" placeholder="se tiver — libera na hora">
+   <button type="button" id="sbt">Criar conta e entrar</button>
+   <button type="button" id="sback" class="sec">← Voltar ao login</button>
+   <p class="hint">Sem código, a conta fica aguardando a administradora liberar.</p>
   </div>
   <div id="lsetup" style="display:none">
    <label>Configuração inicial (só uma vez)</label>
@@ -105,7 +117,7 @@ function fbAuth(){return{mode:'fb',email:SESS.email,user:SESS.email.replace(DOM,
   async changePw(cur,nw){const r=await API.signIn(SESS.email,cur);const u=await API.updatePw(r.idToken,nw);SESS.rt=u.refreshToken;TOK=u.idToken;TOKEXP=Date.now()+(+u.expiresIn-120)*1000;saveSess()}}}
 window.ppLogout=function(){['ped_s','ped_k','ped_u'].forEach(k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)});location.hash='';location.reload()};
 function showLogin(msg){$('login').style.display='';$('er').textContent=msg||'';$('u').focus()}
-const MSG={cred:'Usuário ou senha incorretos.',INVALID_LOGIN_CREDENTIALS:'Usuário ou senha incorretos.',INVALID_PASSWORD:'Usuário ou senha incorretos.',EMAIL_NOT_FOUND:'Usuário ou senha incorretos.',INVALID_EMAIL:'Usuário inválido (use só letras, números, ponto ou traço).',USER_DISABLED:'Acesso desativado.',inativo:'Seu acesso está bloqueado. Fale com a administradora.',semchave:'O app ainda não foi ativado pela administradora.',TOO_MANY_ATTEMPTS_TRY_LATER:'Muitas tentativas. Aguarde alguns minutos.',net:'Sem conexão. Tente novamente com internet.',chave:'Chave inválida — confira o conteúdo de chave-mestra.txt.'};
+const MSG={cred:'Usuário ou senha incorretos.',INVALID_LOGIN_CREDENTIALS:'Usuário ou senha incorretos.',INVALID_PASSWORD:'Usuário ou senha incorretos.',EMAIL_NOT_FOUND:'Usuário ou senha incorretos.',INVALID_EMAIL:'Usuário inválido (use só letras, números, ponto ou traço).',USER_DISABLED:'Acesso desativado.',WEAK_PASSWORD:'Senha fraca (mínimo 6 caracteres).',OPERATION_NOT_ALLOWED:'Cadastro desativado no Firebase (ative E-mail/senha em Authentication).',inativo:'Seu acesso ainda não foi liberado (ou foi bloqueado). Fale com a administradora.',semchave:'O app ainda não foi ativado pela administradora.',TOO_MANY_ATTEMPTS_TRY_LATER:'Muitas tentativas. Aguarde alguns minutos.',net:'Sem conexão. Tente novamente com internet.',chave:'Chave inválida — confira o conteúdo de chave-mestra.txt.'};
 const msg=e=>MSG[e.message]||('Erro: '+e.message);
 if(false){
   $('forgot').onclick=async ev=>{ev.preventDefault();const e=$('u').value.trim().toLowerCase();if(!e){$('er').textContent='Digite seu e-mail acima e clique de novo.';return}try{await API.sendReset(e);$('er').style.color='inherit';$('er').textContent='Enviamos um e-mail para redefinir a senha (veja também o spam).'}catch(x){$('er').textContent=msg(x)}}}
@@ -118,8 +130,28 @@ if(saved){STORE=localStorage.getItem('ped_s')?localStorage:sessionStorage;SESS=J
   }).catch(()=>{window.ppLogout()});
 }else{showLogin();try{if(localStorage.getItem('ped_rm')==='0')$('rm').checked=false;const lu=localStorage.getItem('ped_lu');if(lu)$('u').value=lu}catch(e){}}
 /* ---- login ---- */
+const setMode=s=>{$('lmain').style.display=s?'none':'';$('lsign').style.display=s?'':'none';$('er').textContent='';$('er').style.color='';(s?$('sn'):$('u')).focus()};
+if(FB){$('sgo').style.display='';$('sgo').onclick=()=>setMode(1);$('sback').onclick=()=>setMode(0);$('sbt').onclick=()=>doSign()}
+async function doSign(){const bt=$('sbt'),er=$('er');er.style.color='';er.textContent='';
+  const n=$('sn').value.trim(),u=$('su').value.trim().toLowerCase(),pw=$('sp').value,code=$('sc').value.trim();
+  if(!n){er.textContent='Digite seu nome.';return}
+  if(!/^[a-z0-9._-]{3,30}$/.test(u)){er.textContent='Usuário: mínimo 3 letras/números, sem espaço ou acento.';return}
+  if(pw.length<6){er.textContent='A senha precisa de pelo menos 6 caracteres.';return}
+  bt.disabled=true;bt.textContent='Criando…';
+  try{const e=toEmail(u),r=await API.signUp(e,pw),uid=r.localId,tk=r.idToken,base={email:e,nome:n,criado:new Date().toISOString()};
+    let ok=false;
+    if(code){try{await API.fs('PATCH','users/'+uid,tk,toFS(Object.assign({},base,{ativo:true,codigo:code})));ok=true}catch(x){if(x.status!==403)throw x}}
+    if(!ok){try{await API.fs('PATCH','users/'+uid,tk,toFS(Object.assign({},base,{ativo:false,pendente:true})))}catch(x){if(x.status!==403)throw x}
+      bt.disabled=false;bt.textContent='Criar conta e entrar';setMode(0);$('u').value=u;$('pw').value='';er.style.color='inherit';
+      er.textContent=(code?'Código de convite inválido. ':'')+'Conta criada ✓ Aguarde a liberação da administradora — depois é só entrar com seu usuário e senha.';return}
+    STORE=localStorage;try{localStorage.setItem('ped_lu',u)}catch(x){}
+    SESS={mode:'fb',rt:r.refreshToken,uid,email:e};TOK=tk;TOKEXP=Date.now()+(+r.expiresIn-120)*1000;
+    const raw=await readKey(TOK);if(!raw)throw new Error('semchave');SESS.k=b64(raw);saveSess();
+    try{if(window.PasswordCredential&&navigator.credentials)navigator.credentials.store(new PasswordCredential({id:u,password:pw,name:n})).catch(()=>{})}catch(x){}
+    await boot(raw,fbAuth());
+  }catch(x){er.textContent=x.message==='EMAIL_EXISTS'?'Esse usuário já existe — escolha outro ou volte ao login.':msg(x);bt.disabled=false;bt.textContent='Criar conta e entrar'}}
 $('lf').addEventListener('submit',async ev=>{
-  ev.preventDefault();const bt=$('bt'),er=$('er');er.style.color='';
+  ev.preventDefault();if($('lsign').style.display!=='none'){doSign();return}const bt=$('bt'),er=$('er');er.style.color='';
   const u=$('u').value.trim().toLowerCase(),pw=$('pw').value;STORE=$('rm').checked?localStorage:sessionStorage;try{localStorage.setItem('ped_rm',$('rm').checked?'1':'0');localStorage.setItem('ped_lu',u)}catch(e){}const saveCred=()=>{try{if(window.PasswordCredential&&navigator.credentials)navigator.credentials.store(new PasswordCredential({id:u,password:pw,name:u})).catch(()=>{})}catch(e){}};
   bt.disabled=true;bt.textContent='Verificando…';er.textContent='';
   try{
